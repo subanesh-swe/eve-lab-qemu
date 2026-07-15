@@ -32,11 +32,36 @@ On your workstation (the machine you `ssh` from):
   `vncviewer`, TigerVNC, macOS Screen Sharing, Remmina.
 - A browser (day-to-day EVE-NG use).
 
-## Usage — with Nix
+## Usage — direct from GitHub (no clone)
+
+If you have Nix with flakes enabled, run directly against the repo:
 
 ```sh
-cd /path/to/eve-lab-qemu
 tmux new -s eve                        # essential — VM dies without it
+
+nix --refresh run github:subanesh-swe/eve-lab-qemu -- setup
+nix --refresh run github:subanesh-swe/eve-lab-qemu -- install
+nix --refresh run github:subanesh-swe/eve-lab-qemu -- run
+
+# in a second SSH session on the same host:
+nix --refresh run github:subanesh-swe/eve-lab-qemu -- check
+```
+
+Notes:
+- `--refresh` forces Nix to re-fetch the latest commit each run — drop
+  it once you want to lock to a specific version and stop pulling
+  updates.
+- Pin to a tag or commit for reproducibility:
+  `nix run github:subanesh-swe/eve-lab-qemu/<tag-or-sha> -- run`
+- First invocation downloads the flake + nixpkgs; subsequent runs are
+  cached.
+
+## Usage — with a local clone
+
+```sh
+git clone https://github.com/subanesh-swe/eve-lab-qemu.git
+cd eve-lab-qemu
+tmux new -s eve
 
 nix run .# -- setup                    # ISO + qcow2 + VNC password (once)
 nix run .# -- install                  # boot ISO, install EVE-NG (once)
@@ -46,10 +71,11 @@ nix run .# -- install                  # boot ISO, install EVE-NG (once)
                                        # install has succeeded.
 nix run .# -- run                      # boot the installed VM
                                        # (every session goes through this)
-
-# in a second SSH session on the same host:
 nix run .# -- check                    # HTTP-probe the web UI
 ```
+
+Use a local clone if you want to edit the script, run `nix flake check`
+locally, or contribute changes.
 
 ## Usage — without Nix
 
