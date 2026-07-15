@@ -1,0 +1,20 @@
+eve-lab-qemu
+Copyright 2026 Subanesh Kumarasamy
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This product includes no third-party code. It orchestrates the
+following external software at runtime; those tools are governed by
+their own respective licenses and are NOT redistributed by this
+project:
+
+  - QEMU                 (GPL-2.0)          https://www.qemu.org/
+  - aria2                (GPL-2.0-or-later) https://aria2.github.io/
+  - OpenSSL              (Apache-2.0)       https://www.openssl.org/
+  - curl                 (curl license)     https://curl.se/
+  - EVE-NG Community     (proprietary,      https://www.eve-ng.net/
+    Edition ISO           free-of-charge)
