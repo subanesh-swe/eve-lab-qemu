@@ -1,0 +1,17 @@
+version: 2
+
+secret:
+  # `password-secret=vncsec` is a QEMU CLI flag, not a credential.
+  # `vncsec` is the *identifier* we assign to a `-object secret ...`
+  # block earlier on the command line; QEMU uses it to name in-memory
+  # secret sources so multiple consumers (VNC auth, disk encryption,
+  # TLS, SASL) can reference the same source by ID.
+  #
+  # The actual password value is generated at setup time and stored
+  # in ~/.eve-vnc-pass on the user's machine (mode 0600). It is never
+  # in the repo. See `cmd_setup` in eve-lab.sh for the `openssl rand`
+  # generation and the `-object secret,file=...` line for how QEMU
+  # reads it.
+  ignored-matches:
+    - name: qemu-vnc-secret-object-id
+      match: password-secret=vncsec
