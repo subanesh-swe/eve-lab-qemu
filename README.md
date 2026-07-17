@@ -51,10 +51,33 @@ Notes:
 - `--refresh` forces Nix to re-fetch the latest commit each run — drop
   it once you want to lock to a specific version and stop pulling
   updates.
-- Pin to a tag or commit for reproducibility:
-  `nix run github:subanesh-swe/eve-lab-qemu/<tag-or-sha> -- run`
+- Pin to a specific commit for reproducibility:
+  `nix run github:subanesh-swe/eve-lab-qemu/<commit-sha> -- run`
 - First invocation downloads the flake + nixpkgs; subsequent runs are
   cached.
+
+### If you hit GitHub API rate limits
+
+The `github:owner/repo` form uses GitHub's API to resolve the ref,
+which is capped at 60 requests/hour for unauthenticated clients. If
+you see `HTTP 403: API rate limit exceeded`, fetch the archive
+directly (goes through GitHub's CDN, no API involved):
+
+```sh
+nix run https://github.com/subanesh-swe/eve-lab-qemu/archive/master.zip -- setup
+nix run https://github.com/subanesh-swe/eve-lab-qemu/archive/master.zip -- install
+nix run https://github.com/subanesh-swe/eve-lab-qemu/archive/master.zip -- run
+nix run https://github.com/subanesh-swe/eve-lab-qemu/archive/master.zip -- check
+```
+
+Pin to a specific commit for reproducibility:
+
+```sh
+nix run https://github.com/subanesh-swe/eve-lab-qemu/archive/<commit-sha>.zip -- run
+```
+
+Or authenticate `gh` (`gh auth login`) to raise your API limit to
+5000/hour and keep using the `github:` form.
 
 ## Usage — with a local clone
 
@@ -128,6 +151,7 @@ All optional; defaults are what most people want.
 | `EVE_DIR` | `~/eve-lab` | all | where ISO + qcow2 live |
 | `ISO_URL` | CE 6.2 baked-in link | setup | override for newer releases (see below) |
 | `DISK_SIZE` | `200G` | setup | qcow2 max size (thin-provisioned) |
+| `DOWNLOADER` | `aria2` | setup | ISO downloader: `aria2` (parallel, fast) or `curl` (always available, single connection). Both resume partial downloads. |
 | `VNC_PASS_FILE` | `~/.eve-vnc-pass` | install / run | VNC password file |
 | `MEM` | `24G` | install / run | VM memory |
 | `CPUS` | `8` | install / run | VM vCPUs |
