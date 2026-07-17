@@ -142,26 +142,39 @@ ssh -N -L 5901:localhost:5901 <host>
 Both `install` and `run` print the exact commands with your configured
 ports every time — no need to memorise.
 
-## Environment variables
+## Flags and environment variables
 
-All optional; defaults are what most people want.
+Design rule: **one spelling per knob**.
 
-| var | default | used by | meaning |
-|---|---|---|---|
-| `EVE_DIR` | `~/eve-lab` | all | where ISO + qcow2 live |
-| `ISO_URL` | CE 6.2 baked-in link | setup | override for newer releases (see below) |
-| `DISK_SIZE` | `200G` | setup | qcow2 max size (thin-provisioned) |
-| `DOWNLOADER` | `aria2` | setup | ISO downloader: `aria2` (parallel, fast) or `curl` (always available, single connection). Both resume partial downloads. |
-| `VNC_PASS_FILE` | `~/.eve-vnc-pass` | install / run | VNC password file |
-| `MEM` | `24G` | install / run | VM memory |
-| `CPUS` | `8` | install / run | VM vCPUs |
-| `VNC_PORT_OFFSET` | `1` | install / run | `:N` → TCP `590N` |
-| `WEB_HOSTFWD_PORT` | `8080` | install / run / check | host port → VM :80 |
-| `WEB_TLS_HOSTFWD_PORT` | `8443` | install / run | host port → VM :443 |
-| `PORT` | `$WEB_HOSTFWD_PORT` | check | port to probe |
-| `HOST` | `127.0.0.1` | check | host to probe |
-| `TIMEOUT` | `5` | check | HTTP timeout, seconds |
-| `QEMU_PROC_MATCH` | `qemu-system-x86_64.*eve-lab` | check | pgrep pattern |
+- Per-run values → **CLI flags** (`--flag value`). No env-var fallback.
+- Session/path config → **env vars** (persistent in your shell rc).
+
+No precedence rules to remember; each option has exactly one place to
+set it.
+
+### Per-run flags
+
+```
+eve-lab setup   [--iso-url URL]   [--disk SIZE]   [--downloader aria2|curl]
+eve-lab install [--mem SIZE]      [--cpus N]
+eve-lab run     [--mem SIZE]      [--cpus N]
+eve-lab check   [--port PORT]     [--host HOST]   [--timeout SECS]
+```
+
+Run `eve-lab help` for defaults and per-flag notes.
+
+### Session env vars
+
+Set once in your shell rc. All optional; defaults shown.
+
+| var | default | meaning |
+|---|---|---|
+| `EVE_DIR` | `~/eve-lab` | where ISO + qcow2 live |
+| `VNC_PASS_FILE` | `~/.eve-vnc-pass` | VNC password file |
+| `VNC_PORT_OFFSET` | `1` | VNC `:N` → TCP `590N` |
+| `WEB_HOSTFWD_PORT` | `8080` | host port → VM :80 (also the `check --port` default) |
+| `WEB_TLS_HOSTFWD_PORT` | `8443` | host port → VM :443 |
+| `QEMU_PROC_MATCH` | `qemu-system-x86_64.*eve-lab` | pgrep pattern for `check` |
 
 **Finding the current ISO URL** — EVE-NG rotates URLs per release. If
 `setup` fails to download, get a fresh URL:
@@ -169,7 +182,7 @@ All optional; defaults are what most people want.
 1. Open [https://www.eve-ng.net/index.php/download/](https://www.eve-ng.net/index.php/download/)
 2. Click the "Free EVE Community Edition" tab.
 3. Copy the "EVE-NG CE Full ISO – direct link".
-4. Re-run: `ISO_URL='<pasted URL>' eve-lab setup`
+4. Re-run: `eve-lab setup --iso-url '<pasted URL>'`
 
 ## Tests
 

@@ -6,66 +6,79 @@
 #           environments, restricted hosts).
 #
 # Subcommands (run IN THIS ORDER, first time):
-#   1. setup     download ISO, create qcow2, generate VNC password
-#   2. install   boot with ISO to install EVE-NG. Runs the installer via
-#                VNC. WILL NOT EXIT ON ITS OWN — expect the message
-#                'failed unmounting: /cdrom' at end of phase 1. When you
-#                see it (install has succeeded), kill QEMU (Ctrl-a x) and
-#                move to step 3. If you don't kill it, it just loops.
-#   3. run       boot the installed disk (day-to-day; no CD). First-boot
-#                prompts (root pw, hostname, DHCP) happen here via VNC.
-#   4. check     verify the VM web UI is reachable (run from a second
-#                SSH session while 'run' is up)
-#   help         show this message
+#   1. setup   [--iso-url URL] [--disk SIZE] [--downloader aria2|curl]
+#        Download ISO, create qcow2, generate VNC password.
+#        Defaults:  --iso-url = baked-in CE 6.2 direct link
+#                   --disk 200G
+#                   --downloader aria2
+#        If the baked-in --iso-url goes stale, grab the current one at
+#          https://www.eve-ng.net/index.php/download/
+#          → "Free EVE Community Edition" → "CE Full ISO - direct link"
 #
-# On every subsequent session you only need step 3 (run) — plus 4 (check)
-# if you want to verify. setup and install are one-time.
+#   2. install [--mem SIZE] [--cpus N]
+#        Boot with ISO to install EVE-NG. Runs the installer via VNC.
+#        WILL NOT EXIT ON ITS OWN — expect 'failed unmounting: /cdrom'
+#        at end of phase 1. When you see it (install has succeeded),
+#        kill QEMU (Ctrl-a x) and move to step 3.
+#        Defaults:  --mem 24G  --cpus 8
 #
-# Env vars (all optional, defaults shown):
-#   EVE_DIR=$HOME/eve-lab                    where ISO + qcow2 live
-#   ISO_URL=<baked-in CE 6.2 default>        get the latest at
-#                                            https://www.eve-ng.net/index.php/download/
-#                                            → "Free EVE Community Edition" tab
-#                                            → copy the "CE Full ISO - direct link" URL
-#                                            usage: ISO_URL=<url> eve-lab setup
-#   DISK_SIZE=200G                           qcow2 max size (thin-provisioned)
-#   DOWNLOADER=aria2                         ISO downloader: aria2 (fast, 16
-#                                            parallel connections) or curl
-#                                            (single connection, always
-#                                            available). Both resume partial
-#                                            downloads.
-#   VNC_PASS_FILE=$HOME/.eve-vnc-pass        VNC password file
-#   MEM=24G                                  VM memory
-#   CPUS=8                                   VM vCPUs
-#   VNC_PORT_OFFSET=1                        VNC :N → TCP 590N
-#   WEB_HOSTFWD_PORT=8080                    container port → VM :80
-#   WEB_TLS_HOSTFWD_PORT=8443                container port → VM :443
-#   PORT=8080                                (check) port to probe
-#   HOST=127.0.0.1                           (check) host to probe
-#   TIMEOUT=5                                (check) HTTP timeout seconds
-#   QEMU_PROC_MATCH=qemu-system-x86_64.*eve-lab   (check) pgrep pattern
+#   3. run     [--mem SIZE] [--cpus N]
+#        Boot the installed disk (day-to-day; no CD). First-boot prompts
+#        (root pw, hostname, DHCP) happen here via VNC.
+#        Defaults:  --mem 24G  --cpus 8
+#
+#   4. check   [--port PORT] [--host HOST] [--timeout SECS]
+#        Verify the VM web UI is reachable (run from a second SSH
+#        session while 'run' is up).
+#        Defaults:  --port $WEB_HOSTFWD_PORT (8080)
+#                   --host 127.0.0.1
+#                   --timeout 5
+#
+#   help
+#        Show this message.
+#
+# On every subsequent session you only need step 3 (run) — plus 4
+# (check) if you want to verify. setup and install are one-time.
+#
+# Session/path config lives in env vars (persistent, set once in your
+# shell rc). Per-run values go on the CLI as flags — one spelling per
+# knob, no precedence rules to remember.
+#
+# Session env vars (all optional, defaults shown):
+#   EVE_DIR=$HOME/eve-lab                        where ISO + qcow2 live
+#   VNC_PASS_FILE=$HOME/.eve-vnc-pass            VNC password file
+#   VNC_PORT_OFFSET=1                            VNC :N → TCP 590N
+#   WEB_HOSTFWD_PORT=8080                        host port → VM :80
+#   WEB_TLS_HOSTFWD_PORT=8443                    host port → VM :443
+#   QEMU_PROC_MATCH=qemu-system-x86_64.*eve-lab  (check) pgrep pattern
 #
 # Runtime dependencies (must be on PATH):
 #   qemu-system-x86_64, qemu-img, openssl, curl, pgrep
-#   aria2c (optional — only if DOWNLOADER=aria2, which is the default)
+#   aria2c (optional — only if --downloader aria2, which is the default)
 # USAGE_END
 
 set -euo pipefail
 
+# Session/path config — env-only (persistent, set once in shell rc).
 EVE_DIR="${EVE_DIR:-$HOME/eve-lab}"
-ISO_URL="${ISO_URL:-https://customers.eve-ng.net/eve-ce-prod-6.2.0-4-full.iso}"
-DISK_SIZE="${DISK_SIZE:-200G}"
-DOWNLOADER="${DOWNLOADER:-aria2}"
 VNC_PASS_FILE="${VNC_PASS_FILE:-$HOME/.eve-vnc-pass}"
-MEM="${MEM:-24G}"
-CPUS="${CPUS:-8}"
 VNC_PORT_OFFSET="${VNC_PORT_OFFSET:-1}"
 WEB_HOSTFWD_PORT="${WEB_HOSTFWD_PORT:-8080}"
 WEB_TLS_HOSTFWD_PORT="${WEB_TLS_HOSTFWD_PORT:-8443}"
-PORT="${PORT:-$WEB_HOSTFWD_PORT}"
-HOST="${HOST:-127.0.0.1}"
-TIMEOUT="${TIMEOUT:-5}"
 QEMU_PROC_MATCH="${QEMU_PROC_MATCH:-qemu-system-x86_64.*eve-lab}"
+
+# Per-run defaults — override via CLI flags on the relevant subcommand.
+# These are plain assignments (no env fallback) so there's exactly one
+# spelling per knob and no precedence confusion.
+ISO_URL="https://customers.eve-ng.net/eve-ce-prod-6.2.0-4-full.iso"
+DISK_SIZE="200G"
+DOWNLOADER="aria2"
+MEM="24G"
+CPUS="8"
+HOST="127.0.0.1"
+TIMEOUT="5"
+# PORT defaults to whatever WEB_HOSTFWD_PORT is (they're two views of the
+# same thing) — set inside cmd_check so it reflects any env override.
 
 usage() {
   # Prints everything between USAGE_BEGIN and USAGE_END markers, strips
@@ -94,7 +107,30 @@ warn_no_tmux() {
   fi
 }
 
+unknown_flag() {
+  # $1 = subcommand name, $2 = the offending flag
+  echo "eve-lab $1: unknown flag '$2'" >&2
+  echo "  see 'eve-lab help' for available flags." >&2
+  exit 1
+}
+
+need_value() {
+  # $1 = flag name; asserts $2 (the value that came after) is present
+  [ -n "${2:-}" ] || { echo "eve-lab: flag '$1' requires a value" >&2; exit 1; }
+}
+
 cmd_setup() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --iso-url)     need_value "$1" "${2:-}"; ISO_URL="$2";    shift 2 ;;
+      --disk)        need_value "$1" "${2:-}"; DISK_SIZE="$2";  shift 2 ;;
+      --downloader)  need_value "$1" "${2:-}"; DOWNLOADER="$2"; shift 2 ;;
+      -h|--help)     usage; exit 0 ;;
+      --)            shift; break ;;
+      *)             unknown_flag setup "$1" ;;
+    esac
+  done
+
   echo "eve-lab setup"
   echo "  EVE_DIR=$EVE_DIR"
   echo "  ISO_URL=$ISO_URL"
@@ -126,7 +162,7 @@ cmd_setup() {
         if command -v aria2c >/dev/null 2>&1; then
           aria2c -s 16 -x 16 -c -o eve-ce.iso "$ISO_URL" && download_ok=true
         else
-          echo "eve-lab: aria2c not on PATH. Retry with DOWNLOADER=curl or install aria2." >&2
+          echo "eve-lab: aria2c not on PATH. Retry with --downloader curl or install aria2." >&2
         fi
         ;;
       curl)
@@ -199,6 +235,16 @@ EOF
 }
 
 cmd_install() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mem)      need_value "$1" "${2:-}"; MEM="$2";  shift 2 ;;
+      --cpus)     need_value "$1" "${2:-}"; CPUS="$2"; shift 2 ;;
+      -h|--help)  usage; exit 0 ;;
+      --)         shift; break ;;
+      *)          unknown_flag install "$1" ;;
+    esac
+  done
+
   require_kvm
   [ -f "$EVE_DIR/eve-ce.iso" ] || { echo "run 'eve-lab setup' first (no ISO in $EVE_DIR)" >&2; exit 1; }
   [ -f "$EVE_DIR/eve.qcow2"  ] || { echo "run 'eve-lab setup' first (no qcow2 in $EVE_DIR)" >&2; exit 1; }
@@ -253,6 +299,16 @@ EOF
 }
 
 cmd_run() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mem)      need_value "$1" "${2:-}"; MEM="$2";  shift 2 ;;
+      --cpus)     need_value "$1" "${2:-}"; CPUS="$2"; shift 2 ;;
+      -h|--help)  usage; exit 0 ;;
+      --)         shift; break ;;
+      *)          unknown_flag run "$1" ;;
+    esac
+  done
+
   require_kvm
   [ -f "$EVE_DIR/eve.qcow2" ] || { echo "run 'eve-lab setup' + 'eve-lab install' first (no qcow2 in $EVE_DIR)" >&2; exit 1; }
   [ -f "$VNC_PASS_FILE"     ] || { echo "run 'eve-lab setup' first (no VNC password)" >&2; exit 1; }
@@ -289,6 +345,18 @@ EOF
 }
 
 cmd_check() {
+  PORT="$WEB_HOSTFWD_PORT"      # default to whatever hostfwd routes to
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --port)     need_value "$1" "${2:-}"; PORT="$2";    shift 2 ;;
+      --host)     need_value "$1" "${2:-}"; HOST="$2";    shift 2 ;;
+      --timeout)  need_value "$1" "${2:-}"; TIMEOUT="$2"; shift 2 ;;
+      -h|--help)  usage; exit 0 ;;
+      --)         shift; break ;;
+      *)          unknown_flag check "$1" ;;
+    esac
+  done
+
   fail() { echo "FAIL: $*" >&2; exit 1; }
   ok()   { echo "OK:   $*"; }
 
@@ -332,11 +400,13 @@ cmd_check() {
   echo "then browse http://localhost:$PORT/  (login admin / eve)"
 }
 
-case "${1:-help}" in
-  setup)   cmd_setup ;;
-  install) cmd_install ;;
-  run)     cmd_run ;;
-  check)   cmd_check ;;
+sub="${1:-help}"
+shift || true    # tolerate zero-arg invocation
+case "$sub" in
+  setup)   cmd_setup   "$@" ;;
+  install) cmd_install "$@" ;;
+  run)     cmd_run     "$@" ;;
+  check)   cmd_check   "$@" ;;
   help|-h|--help) usage ;;
-  *) echo "eve-lab: unknown command '$1'" >&2; usage >&2; exit 1 ;;
+  *) echo "eve-lab: unknown command '$sub'" >&2; usage >&2; exit 1 ;;
 esac
