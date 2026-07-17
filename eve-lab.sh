@@ -29,6 +29,11 @@
 #                                            → copy the "CE Full ISO - direct link" URL
 #                                            usage: ISO_URL=<url> eve-lab setup
 #   DISK_SIZE=200G                           qcow2 max size (thin-provisioned)
+#   DOWNLOADER=aria2                         ISO downloader: aria2 (fast, 16
+#                                            parallel connections) or curl
+#                                            (single connection, always
+#                                            available). Both resume partial
+#                                            downloads.
 #   VNC_PASS_FILE=$HOME/.eve-vnc-pass        VNC password file
 #   MEM=24G                                  VM memory
 #   CPUS=8                                   VM vCPUs
@@ -41,7 +46,8 @@
 #   QEMU_PROC_MATCH=qemu-system-x86_64.*eve-lab   (check) pgrep pattern
 #
 # Runtime dependencies (must be on PATH):
-#   qemu-system-x86_64, qemu-img, aria2c, openssl, curl, pgrep
+#   qemu-system-x86_64, qemu-img, openssl, curl, pgrep
+#   aria2c (optional — only if DOWNLOADER=aria2, which is the default)
 # USAGE_END
 
 set -euo pipefail
@@ -49,6 +55,7 @@ set -euo pipefail
 EVE_DIR="${EVE_DIR:-$HOME/eve-lab}"
 ISO_URL="${ISO_URL:-https://customers.eve-ng.net/eve-ce-prod-6.2.0-4-full.iso}"
 DISK_SIZE="${DISK_SIZE:-200G}"
+DOWNLOADER="${DOWNLOADER:-aria2}"
 VNC_PASS_FILE="${VNC_PASS_FILE:-$HOME/.eve-vnc-pass}"
 MEM="${MEM:-24G}"
 CPUS="${CPUS:-8}"
@@ -108,11 +115,32 @@ cmd_setup() {
     echo "VNC password already exists at $VNC_PASS_FILE"
   fi
 
-  # 2. ISO download (resumable).
+  # 2. ISO download (resumable — both downloaders resume a partial file).
   if [ ! -f eve-ce.iso ]; then
     echo "Downloading EVE-NG CE ISO (~3.2 GiB)..."
-    echo "  from: $ISO_URL"
-    if ! aria2c -s 16 -x 16 -c -o eve-ce.iso "$ISO_URL"; then
+    echo "  from:       $ISO_URL"
+    echo "  downloader: $DOWNLOADER"
+    case "$DOWNLOADER" in
+      aria2)
+        download_ok=false
+        if command -v aria2c >/dev/null 2>&1; then
+          aria2c -s 16 -x 16 -c -o eve-ce.iso "$ISO_URL" && download_ok=true
+        else
+          echo "eve-lab: aria2c not on PATH. Retry with DOWNLOADER=curl or install aria2." >&2
+        fi
+        ;;
+      curl)
+        download_ok=false
+        # -f: fail on HTTP errors  -L: follow redirects  -C -: resume partial
+        curl -fL -C - -o eve-ce.iso "$ISO_URL" && download_ok=true
+        ;;
+      *)
+        echo "eve-lab: unknown DOWNLOADER='$DOWNLOADER' (expected: aria2 | curl)" >&2
+        exit 1
+        ;;
+    esac
+
+    if [ "$download_ok" != true ]; then
       cat >&2 <<EOF
 
 ERROR: could not download EVE-NG CE ISO from
@@ -127,6 +155,10 @@ becomes stale. Get the current URL and re-run:
   4. Re-run this command with it:
 
      ISO_URL='<pasted URL>' eve-lab setup
+
+If aria2 is unavailable, force curl:
+
+     DOWNLOADER=curl eve-lab setup
 
 Also possible: this host has no outbound internet, or the mirror
 is temporarily down. Try again after checking connectivity:
